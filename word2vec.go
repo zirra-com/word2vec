@@ -14,8 +14,8 @@ import (
 
 // Model is a type which represents a word2vec Model and implements the Coser interface.
 type Model struct {
-	dim   int
-	words map[string]Vector
+	Dim   int
+	Words map[string]Vector
 }
 
 // FromReader creates a Model using the binary model data provided by the io.Reader.
@@ -27,12 +27,12 @@ func FromReader(r io.Reader) (*Model, error) {
 		return nil, err
 	}
 	if n != 2 {
-		return nil, fmt.Errorf("could not extract size/dim from binary model data")
+		return nil, fmt.Errorf("could not extract size/dim from binary Data")
 	}
 
 	m := &Model{
-		words: make(map[string]Vector, size),
-		dim:   dim,
+		Words: make(map[string]Vector, size),
+		Dim:   dim,
 	}
 
 	raw := make([]float32, size*dim)
@@ -44,18 +44,20 @@ func FromReader(r io.Reader) (*Model, error) {
 		}
 		w = w[:len(w)-1]
 
-		v := Vector(raw[dim*i : m.dim*(i+1)])
-		if err := binary.Read(br, binary.LittleEndian, v); err != nil {
+		v := Vector(raw[m.Dim*i : m.Dim*(i+1)])
+		err = binary.Read(br, binary.LittleEndian, v)
+		if err != nil {
 			return nil, err
 		}
 
 		v.Normalise()
 
-		if _, err := br.ReadByte(); err != nil {
+		_, err = br.ReadByte()
+		if err != nil {
 			return nil, err
 		}
 
-		m.words[w] = v
+		m.Words[w] = v
 	}
 	return m, nil
 }
@@ -145,12 +147,12 @@ type Coser interface {
 
 // Size returns the number of words in the model.
 func (m *Model) Size() int {
-	return len(m.words)
+	return len(m.Words)
 }
 
 // Dim returns the dimention of the vectors in the model.
-func (m *Model) Dim() int {
-	return m.dim
+func (m *Model) Dimension() int {
+	return m.Dim
 }
 
 // Vectors returns a mapping word -> Vector for each word in `w`,
@@ -158,7 +160,7 @@ func (m *Model) Dim() int {
 func (m *Model) Vectors(words []string) map[string]Vector {
 	result := make(map[string]Vector)
 	for _, w := range words {
-		if v, ok := m.words[w]; ok {
+		if v, ok := m.Words[w]; ok {
 			result[w] = v
 		}
 	}
@@ -196,9 +198,9 @@ func (m *Model) Coses(pairs [][2]Expr) ([]float32, error) {
 // Eval constructs a vector by evaluating the expression
 // vector.  Returns an error if a word is not in the model.
 func (m *Model) Eval(expr Expr) (Vector, error) {
-	v := Vector(make([]float32, m.dim))
+	v := Vector(make([]float32, m.Dim))
 	for w, c := range expr {
-		u, ok := m.words[w]
+		u, ok := m.Words[w]
 		if !ok {
 			return nil, &NotFoundError{w}
 		}
@@ -230,7 +232,7 @@ func (m *Model) CosN(e Expr, n int) ([]Match, error) {
 // cosineN is a method which returns a list of `n` most similar vectors to `v` in the model.
 func (m *Model) cosineN(v Vector, n int) []Match {
 	r := make([]Match, n)
-	for w, u := range m.words {
+	for w, u := range m.Words {
 		score := v.Dot(u)
 		p := Match{w, score}
 		// TODO(dhowden): MaxHeap would be better here if n is large.
