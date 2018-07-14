@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 
 	"github.com/ziutek/blas"
@@ -202,7 +203,7 @@ func (m *Model) Eval(expr Expr) (Vector, error) {
 	for w, c := range expr {
 		u, ok := m.Words[w]
 		if !ok {
-			return nil, &NotFoundError{w}
+			return nil, NotFoundError{w}
 		}
 		v.Add(c, u)
 	}
@@ -219,20 +220,23 @@ type Match struct {
 
 // CosN computes the n most similar words to the expression.  Returns an error if the
 // expression could not be evaluated.
-func (m *Model) CosN(e Expr, n int) ([]Match, error) {
+func (m *Model) CosN(e Expr, n int, companyOnly bool) ([]Match, error) {
 	v, err := e.Eval(m)
 	if err != nil {
 		return nil, err
 	}
 
 	v.Normalise()
-	return m.cosineN(v, n), nil
+	return m.CosineN(v, n, companyOnly), nil
 }
 
-// cosineN is a method which returns a list of `n` most similar vectors to `v` in the model.
-func (m *Model) cosineN(v Vector, n int) []Match {
+// CosineN is a method which returns a list of `n` most similar vectors to `v` in the model.
+func (m *Model) CosineN(v Vector, n int, companyOnly bool) []Match {
 	r := make([]Match, n)
 	for w, u := range m.Words {
+		if companyOnly && !strings.HasPrefix(w, "#") {
+			continue
+		}
 		score := v.Dot(u)
 		p := Match{w, score}
 		// TODO(dhowden): MaxHeap would be better here if n is large.
@@ -257,7 +261,7 @@ type multiMatches struct {
 
 // MultiCosN takes a list of expressions and computes the
 // n most similar words for each.
-func MultiCosN(m *Model, exprs []Expr, n int) ([][]Match, error) {
+func MultiCosN(m *Model, exprs []Expr, n int, companyOnly bool) ([][]Match, error) {
 	vecs := make([]Vector, len(exprs))
 	for i, e := range exprs {
 		v, err := e.Eval(m)
@@ -272,7 +276,7 @@ func MultiCosN(m *Model, exprs []Expr, n int) ([][]Match, error) {
 	ch := make(chan multiMatches, len(vecs))
 	for i, v := range vecs {
 		go func(i int, v Vector) {
-			ch <- multiMatches{N: i, Matches: m.cosineN(v, n)}
+			ch <- multiMatches{N: i, Matches: m.CosineN(v, n, companyOnly)}
 			wg.Done()
 		}(i, v)
 	}
